@@ -16,17 +16,18 @@ interface PaymentExternalService : PaymentService
  * Describes properties of payment-provider accounts.
  */
 data class ExternalServiceProperties(
-    val serviceName: String,
-    val accountName: String,
-    val parallelRequests: Int,
-    val rateLimitPerSec: Int,
-    val request95thPercentileProcessingTime: Duration = Duration.ofSeconds(11)
+        val serviceName: String,
+        val accountName: String,
+        val parallelRequests: Int,
+        val rateLimitPerSec: Int,
+        val request95thPercentileProcessingTime: Duration = Duration.ofSeconds(11),
+        val priority: Int,
 )
 
 /**
  * Describes response from external service.
  */
 class ExternalSysResponse(
-    val result: Boolean,
-    val message: String? = null,
+        val result: Boolean,
+        val message: String? = null,
 )

@@ -10,15 +10,18 @@ import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import ru.quipy.core.EventSourcingService
 import ru.quipy.payments.api.PaymentAggregate
+import ru.quipy.payments.config.AccountRequestsInfo
 import java.net.SocketTimeoutException
 import java.time.Duration
 import java.util.*
 import java.util.concurrent.Executors
+import java.util.concurrent.locks.ReentrantLock
 
 
 // Advice: always treat time as a Duration
 class PaymentExternalServiceImpl(
-    private val properties: ExternalServiceProperties,
+        private val properties: AccountRequestsInfo,
+        private val mutex: ReentrantLock,
 ) : PaymentExternalService {
 
     companion object {
@@ -30,11 +33,11 @@ class PaymentExternalServiceImpl(
         val mapper = ObjectMapper().registerKotlinModule()
     }
 
-    private val serviceName = properties.serviceName
-    private val accountName = properties.accountName
-    private val requestAverageProcessingTime = properties.request95thPercentileProcessingTime
-    private val rateLimitPerSec = properties.rateLimitPerSec
-    private val parallelRequests = properties.parallelRequests
+    private val serviceName = properties.getExternalServiceProperties().serviceName
+    private val accountName = properties.getExternalServiceProperties().accountName
+    private val requestAverageProcessingTime = properties.getExternalServiceProperties().request95thPercentileProcessingTime
+    private val rateLimitPerSec = properties.getExternalServiceProperties().rateLimitPerSec
+    private val parallelRequests = properties.getExternalServiceProperties().parallelRequests
 
     @Autowired
     private lateinit var paymentESService: EventSourcingService<UUID, PaymentAggregate, PaymentAggregateState>
@@ -47,6 +50,7 @@ class PaymentExternalServiceImpl(
     }
 
     override fun submitPaymentRequest(paymentId: UUID, amount: Int, paymentStartedAt: Long) {
+        logger.info("HEHE 1")
         logger.warn("[$accountName] Submitting payment request for payment $paymentId. Already passed: ${now() - paymentStartedAt} ms")
 
         val transactionId = UUID.randomUUID()
@@ -65,6 +69,9 @@ class PaymentExternalServiceImpl(
 
         try {
             client.newCall(request).execute().use { response ->
+                properties.decrementPendingRequestsAmount()
+                mutex.unlock()
+
                 val body = try {
                     mapper.readValue(response.body?.string(), ExternalSysResponse::class.java)
                 } catch (e: Exception) {
