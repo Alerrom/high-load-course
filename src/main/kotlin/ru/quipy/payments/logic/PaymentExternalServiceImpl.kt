@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import ru.quipy.core.EventSourcingService
 import ru.quipy.payments.api.PaymentAggregate
 import ru.quipy.payments.config.AccountRequestsInfo
+import ru.quipy.streams.AggregateSubscriptionsManager
 import java.net.SocketTimeoutException
 import java.time.Duration
 import java.util.*
@@ -22,6 +23,7 @@ import java.util.concurrent.locks.ReentrantLock
 class PaymentExternalServiceImpl(
         private val properties: AccountRequestsInfo,
         private val mutex: ReentrantLock,
+        private val paymentESService: EventSourcingService<UUID, PaymentAggregate, PaymentAggregateState>,
 ) : PaymentExternalService {
 
     companion object {
@@ -39,8 +41,8 @@ class PaymentExternalServiceImpl(
     private val rateLimitPerSec = properties.getExternalServiceProperties().rateLimitPerSec
     private val parallelRequests = properties.getExternalServiceProperties().parallelRequests
 
-    @Autowired
-    private lateinit var paymentESService: EventSourcingService<UUID, PaymentAggregate, PaymentAggregateState>
+//    @Autowired
+//    private lateinit var paymentESService: EventSourcingService<UUID, PaymentAggregate, PaymentAggregateState>
 
     private val httpClientExecutor = Executors.newSingleThreadExecutor()
 
@@ -50,37 +52,37 @@ class PaymentExternalServiceImpl(
     }
 
     override fun submitPaymentRequest(paymentId: UUID, amount: Int, paymentStartedAt: Long) {
-        logger.warn("HEHE 1 $accountName $serviceName")
         logger.warn("[$accountName] Submitting payment request for payment $paymentId. Already passed: ${now() - paymentStartedAt} ms")
 
         val transactionId = UUID.randomUUID()
-        logger.warn("HEHE 5 [$accountName] Submit for $paymentId , txId: $transactionId")
 
         // Вне зависимости от исхода оплаты важно отметить что она была отправлена.
         // Это требуется сделать ВО ВСЕХ СЛУЧАЯХ, поскольку эта информация используется сервисом тестирования.
-//        paymentESService.update(paymentId) {
-//            it.logSubmission(success = true, transactionId, now(), Duration.ofMillis(now() - paymentStartedAt))
-//        }
+        try {
+            paymentESService.update(paymentId) {
+                it.logSubmission(success = true, transactionId, now(), Duration.ofMillis(now() - paymentStartedAt))
+            }
+        } catch (e: Exception){
+            logger.warn("HEHE 5 ${e.message}")
+        }
 
-        logger.warn("HEHE 4")
 
         val request = Request.Builder().run {
             url("http://localhost:1234/external/process?serviceName=${serviceName}&accountName=${accountName}&transactionId=$transactionId")
             post(emptyBody)
         }.build()
 
-        logger.warn("HEHE 3 ${request.url}")
-
         try {
             client.newCall(request).execute().use { response ->
-                logger.warn("HEHE 2_1 ${response.body?.string()}")
+                val respBody = response.body?.string()
+                logger.warn("[HEHE 2_1] ResponseBody: ${respBody}")
                 mutex.lock()
                 properties.decrementPendingRequestsAmount()
                 mutex.unlock()
-                logger.warn("HEHE 2_2 ${response.body?.string()}")
+                logger.warn("[HEHE 2_1] ResponseBody: ${respBody}")
 
                 val body = try {
-                    mapper.readValue(response.body?.string(), ExternalSysResponse::class.java)
+                    mapper.readValue(respBody, ExternalSysResponse::class.java)
                 } catch (e: Exception) {
                     logger.error("[$accountName] [ERROR] Payment processed for txId: $transactionId, payment: $paymentId, result code: ${response.code}, reason: ${response.body?.string()}")
                     ExternalSysResponse(false, e.message)
@@ -97,6 +99,7 @@ class PaymentExternalServiceImpl(
         } catch (e: Exception) {
             when (e) {
                 is SocketTimeoutException -> {
+                    logger.warn("[HEHE 4_1] ERROR: Request timeout")
                     paymentESService.update(paymentId) {
                         it.logProcessing(false, now(), transactionId, reason = "Request timeout.")
                     }

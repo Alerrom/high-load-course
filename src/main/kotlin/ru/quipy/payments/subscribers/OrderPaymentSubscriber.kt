@@ -57,14 +57,30 @@ class OrderPaymentSubscriber {
                     }
                     logger.warn("Payment ${createdEvent.paymentId} for order ${event.orderId} created.")
 
-                    mutex.lock()
-                    val accountInfo = accounts.maxByOrNull { if (it.getPendingRequestsAmount() <= it.getParallelRequests() && it.getLastSecondRequestsAmount() <= it.getRateLimitPerSec()) it.getPriority() else 0 }
-                    logger.warn("HEHE ${accountInfo?.getExternalServiceProperties()?.accountName}")
+                    var accountInfo: AccountRequestsInfo
 
-                    accountInfo?.addTimestamp()
-                    accountInfo?.incrementPendingRequestsAmount()
+                    while (true) {
+                        mutex.lock()
+                        accountInfo = accounts.maxByOrNull { if (it.getPendingRequestsAmount() < it.getParallelRequests() && it.getLastSecondRequestsAmount() < it.getRateLimitPerSec()) it.getPriority() else 0 }!!
+
+                        if (accountInfo.getPendingRequestsAmount() < accountInfo.getParallelRequests() && accountInfo.getLastSecondRequestsAmount() <= accountInfo.getRateLimitPerSec()) {
+                            break
+                        } else {
+                            mutex.unlock()
+                            continue
+                        }
+
+                    }
+                    logger.warn("[HEHE 1] PendingRequestsAmount: ${accountInfo.getPendingRequestsAmount()}, ParallelRequests: ${accountInfo.getParallelRequests()}")
+                    logger.warn("[HEHE 2] LastSecondRequestsAmount: ${accountInfo.getLastSecondRequestsAmount()}, RateLimitPerSec: ${accountInfo.getRateLimitPerSec()}")
+
+                    logger.warn("[HEHE 3] AccountName: ${accountInfo.getExternalServiceProperties().accountName}, AccountPriority: ${accountInfo.getExternalServiceProperties().priority}")
+
+                    accountInfo.addTimestamp()
+                    accountInfo.incrementPendingRequestsAmount()
+
                     mutex.unlock()
-                    val paymentService = PaymentExternalServiceImpl(accountInfo!!, mutex)
+                    val paymentService = PaymentExternalServiceImpl(accountInfo, mutex, paymentESService)
 
                     paymentService.submitPaymentRequest(createdEvent.paymentId, event.amount, event.createdAt)
                 }
