@@ -50,27 +50,34 @@ class PaymentExternalServiceImpl(
     }
 
     override fun submitPaymentRequest(paymentId: UUID, amount: Int, paymentStartedAt: Long) {
-        logger.info("HEHE 1")
+        logger.warn("HEHE 1 $accountName $serviceName")
         logger.warn("[$accountName] Submitting payment request for payment $paymentId. Already passed: ${now() - paymentStartedAt} ms")
 
         val transactionId = UUID.randomUUID()
-        logger.info("[$accountName] Submit for $paymentId , txId: $transactionId")
+        logger.warn("HEHE 5 [$accountName] Submit for $paymentId , txId: $transactionId")
 
         // Вне зависимости от исхода оплаты важно отметить что она была отправлена.
         // Это требуется сделать ВО ВСЕХ СЛУЧАЯХ, поскольку эта информация используется сервисом тестирования.
-        paymentESService.update(paymentId) {
-            it.logSubmission(success = true, transactionId, now(), Duration.ofMillis(now() - paymentStartedAt))
-        }
+//        paymentESService.update(paymentId) {
+//            it.logSubmission(success = true, transactionId, now(), Duration.ofMillis(now() - paymentStartedAt))
+//        }
+
+        logger.warn("HEHE 4")
 
         val request = Request.Builder().run {
             url("http://localhost:1234/external/process?serviceName=${serviceName}&accountName=${accountName}&transactionId=$transactionId")
             post(emptyBody)
         }.build()
 
+        logger.warn("HEHE 3 ${request.url}")
+
         try {
             client.newCall(request).execute().use { response ->
+                logger.warn("HEHE 2_1 ${response.body?.string()}")
+                mutex.lock()
                 properties.decrementPendingRequestsAmount()
                 mutex.unlock()
+                logger.warn("HEHE 2_2 ${response.body?.string()}")
 
                 val body = try {
                     mapper.readValue(response.body?.string(), ExternalSysResponse::class.java)

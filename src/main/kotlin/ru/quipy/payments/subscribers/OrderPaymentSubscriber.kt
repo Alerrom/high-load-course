@@ -55,15 +55,15 @@ class OrderPaymentSubscriber {
                                 event.amount
                         )
                     }
-                    logger.info("Payment ${createdEvent.paymentId} for order ${event.orderId} created.")
+                    logger.warn("Payment ${createdEvent.paymentId} for order ${event.orderId} created.")
 
                     mutex.lock()
                     val accountInfo = accounts.maxByOrNull { if (it.getPendingRequestsAmount() <= it.getParallelRequests() && it.getLastSecondRequestsAmount() <= it.getRateLimitPerSec()) it.getPriority() else 0 }
-                    logger.info("HEHE ${accountInfo?.getExternalServiceProperties()?.accountName}")
+                    logger.warn("HEHE ${accountInfo?.getExternalServiceProperties()?.accountName}")
 
                     accountInfo?.addTimestamp()
                     accountInfo?.incrementPendingRequestsAmount()
-
+                    mutex.unlock()
                     val paymentService = PaymentExternalServiceImpl(accountInfo!!, mutex)
 
                     paymentService.submitPaymentRequest(createdEvent.paymentId, event.amount, event.createdAt)

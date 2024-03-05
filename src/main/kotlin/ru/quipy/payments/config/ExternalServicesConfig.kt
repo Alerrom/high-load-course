@@ -57,7 +57,7 @@ class ExternalServicesConfig {
         )
     }
 
-//    //@Bean(PRIMARY_PAYMENT_BEAN)
+//    @Bean(PRIMARY_PAYMENT_BEAN)
 //    fun fastExternalService(account: AccountRequestsInfo, mutex: ReentrantLock) =
 //            PaymentExternalServiceImpl(
 //                    account,
