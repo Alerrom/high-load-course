@@ -35,7 +35,7 @@ class OrderPaymentSubscriber {
 //    @Qualifier(ExternalServicesConfig.PRIMARY_PAYMENT_BEAN)
 //    private lateinit var paymentService: PaymentService
 
-    private val paymentExecutor = Executors.newFixedThreadPool(16, NamedThreadFactory("payment-executor"))
+    private val paymentExecutor = Executors.newFixedThreadPool(100, NamedThreadFactory("payment-executor"))
 
     private val accounts: List<AccountRequestsInfo> = mutableListOf(
             AccountRequestsInfo(ExternalServicesConfig.accountProps_1),
@@ -67,6 +67,7 @@ class OrderPaymentSubscriber {
                             break
                         } else {
                             mutex.unlock()
+                            Thread.sleep(100)
                             continue
                         }
 
