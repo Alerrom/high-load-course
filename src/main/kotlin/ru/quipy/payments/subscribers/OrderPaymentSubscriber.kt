@@ -11,14 +11,16 @@ import ru.quipy.orders.api.OrderPaymentStartedEvent
 import ru.quipy.payments.api.PaymentAggregate
 import ru.quipy.payments.config.AccountRequestsInfo
 import ru.quipy.payments.config.ExternalServicesConfig
-import ru.quipy.payments.logic.*
+import ru.quipy.payments.logic.PaymentAggregateState
+import ru.quipy.payments.logic.PaymentExternalServiceImpl
+import ru.quipy.payments.logic.create
 import ru.quipy.streams.AggregateSubscriptionsManager
 import ru.quipy.streams.annotation.RetryConf
 import ru.quipy.streams.annotation.RetryFailedStrategy
 import java.util.*
 import java.util.concurrent.Executors
-import javax.annotation.PostConstruct
 import java.util.concurrent.locks.ReentrantLock
+import javax.annotation.PostConstruct
 
 @Service
 class OrderPaymentSubscriber {
@@ -35,24 +37,29 @@ class OrderPaymentSubscriber {
 //    @Qualifier(ExternalServicesConfig.PRIMARY_PAYMENT_BEAN)
 //    private lateinit var paymentService: PaymentService
 
-    private val paymentExecutor = Executors.newFixedThreadPool(100, NamedThreadFactory("payment-executor"))
+    private val paymentExecutor = Executors.newFixedThreadPool(300, NamedThreadFactory("payment-executor"))
 
     private val accounts: List<AccountRequestsInfo> = mutableListOf(
-            AccountRequestsInfo(ExternalServicesConfig.accountProps_1),
-            AccountRequestsInfo(ExternalServicesConfig.accountProps_2))
+        AccountRequestsInfo(ExternalServicesConfig.accountProps_1),
+        AccountRequestsInfo(ExternalServicesConfig.accountProps_2)
+    )
 
     private val mutex = ReentrantLock()
 
     @PostConstruct
     fun init() {
-        subscriptionsManager.createSubscriber(OrderAggregate::class, "payments:order-subscriber", retryConf = RetryConf(1, RetryFailedStrategy.SKIP_EVENT)) {
+        subscriptionsManager.createSubscriber(
+            OrderAggregate::class,
+            "payments:order-subscriber",
+            retryConf = RetryConf(1, RetryFailedStrategy.SKIP_EVENT)
+        ) {
             `when`(OrderPaymentStartedEvent::class) { event ->
                 paymentExecutor.submit {
                     val createdEvent = paymentESService.create {
                         it.create(
-                                event.paymentId,
-                                event.orderId,
-                                event.amount
+                            event.paymentId,
+                            event.orderId,
+                            event.amount,
                         )
                     }
                     logger.warn("Payment ${createdEvent.paymentId} for order ${event.orderId} created.")
@@ -60,14 +67,20 @@ class OrderPaymentSubscriber {
                     var accountInfo: AccountRequestsInfo
 
                     while (true) {
+                        val currTime = System.currentTimeMillis()
                         mutex.lock()
-                        accountInfo = accounts.maxByOrNull { if (it.getPendingRequestsAmount() < it.getParallelRequests() && it.getLastSecondRequestsAmount() < it.getRateLimitPerSec()) it.getPriority() else 0 }!!
+                        accountInfo =
+                            accounts.maxByOrNull { if (it.getPendingRequestsAmount() < it.getParallelRequests() && it.getLastSecondRequestsAmount() < it.getRateLimitPerSec() && (currTime + it.getAverageDuration() - event.createdAt) < 80_000) it.getPriority() else 0 }!!
 
-                        if (accountInfo.getPendingRequestsAmount() < accountInfo.getParallelRequests() && accountInfo.getLastSecondRequestsAmount() <= accountInfo.getRateLimitPerSec()) {
+                        if (currTime + accountInfo.getAverageDuration() - event.createdAt >= 80_000) {
+                            logger.warn("NOT HEHE ${currTime + accountInfo.getAverageDuration() - event.createdAt >= 80_000}")
+                            return@submit
+                        }
+                        if (accountInfo.getPendingRequestsAmount() < accountInfo.getParallelRequests() && accountInfo.getLastSecondRequestsAmount() < accountInfo.getRateLimitPerSec()) {
                             break
                         } else {
                             mutex.unlock()
-                            Thread.sleep(100)
+                            Thread.sleep(75)
                             continue
                         }
 
