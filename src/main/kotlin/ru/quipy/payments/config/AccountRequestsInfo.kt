@@ -3,25 +3,38 @@ package ru.quipy.payments.config
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.context.annotation.Configuration
+import org.springframework.core.annotation.Order
+import ru.quipy.orders.api.OrderPaymentStartedEvent
 import ru.quipy.payments.logic.ExternalServiceProperties
 import ru.quipy.payments.subscribers.OrderPaymentSubscriber
 import java.lang.Math.min
+import java.util.LinkedList
+import java.util.Queue
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.locks.ReentrantLock
 
 class AccountRequestsInfo(
         private val properties: ExternalServiceProperties,
 ) {
+
     val logger: Logger = LoggerFactory.getLogger(AccountRequestsInfo::class.java)
+
+    val mutex = ReentrantLock()
 
     private var timestamps: MutableList<Long> = arrayListOf()
     private var durations: MutableList<Long> = arrayListOf()
+
+    private var queue: Queue<OrderPaymentStartedEvent> = LinkedList()
 
     private var indexOfLastRequest = 0
     private var pendingRequestsAmount = AtomicLong(0)
     private var callCounter = 0
     private var durationCallCounter = 0
 
+    fun getQueue(): Queue<OrderPaymentStartedEvent> {
+        return queue;
+    }
     fun addTimestamp() {
         timestamps.add(System.currentTimeMillis())
     }
@@ -46,7 +59,7 @@ class AccountRequestsInfo(
         }
 
         if (count == 0) return 0
-        logger.warn("HEHEHE ${sum.toFloat() / count.toFloat()}")
+//        logger.warn("HEHEHE ${sum.toFloat() / count.toFloat()}")
         return (sum.toFloat() / count.toFloat()).toLong()
     }
 

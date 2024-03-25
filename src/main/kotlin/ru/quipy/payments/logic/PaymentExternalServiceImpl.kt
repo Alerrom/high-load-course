@@ -49,6 +49,7 @@ class PaymentExternalServiceImpl(
     }
 
     override fun submitPaymentRequest(paymentId: UUID, amount: Int, paymentStartedAt: Long) {
+
         logger.warn("[$accountName] Submitting payment request for payment $paymentId. Already passed: ${now() - paymentStartedAt} ms")
 
         val transactionId = UUID.randomUUID()
@@ -81,14 +82,15 @@ class PaymentExternalServiceImpl(
                     response.use { resp ->
                         val respBody = resp.body?.string()
                         logger.warn("[HEHE 2_1] ResponseBody: ${respBody}")
-                        mutex.lock()
+
+                        properties.mutex.lock()
                         val currentTime = now()
                         properties.addDuration(currentTime - startTime)
-                        logger.error("HEHE_T ${currentTime - startTime}")
+//                        logger.error("HEHE_T ${currentTime - startTime}")
 
                         properties.decrementPendingRequestsAmount()
 
-                        mutex.unlock()
+                        properties.mutex.unlock()
                         logger.warn("[HEHE 2_1] ResponseBody: ${respBody}")
 
                         val body = try {
