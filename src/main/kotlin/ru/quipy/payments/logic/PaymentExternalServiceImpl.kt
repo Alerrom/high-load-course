@@ -44,7 +44,16 @@ class PaymentExternalServiceImpl(
     private val httpClientExecutor = Executors.newSingleThreadExecutor()
 
     private val client = OkHttpClient.Builder().run {
-        dispatcher(Dispatcher(httpClientExecutor))
+        dispatcher(Dispatcher(httpClientExecutor).also {
+            it.maxRequestsPerHost = 100
+            it.maxRequests = 100
+        })
+        protocols(listOf(Protocol.H2_PRIOR_KNOWLEDGE))
+//        connectionPool(object : ConnectionPool {
+//            override fun connectionCount(): Int {
+//                return 0
+//            }
+//        })
         build()
     }
 
@@ -75,6 +84,14 @@ class PaymentExternalServiceImpl(
             client.newCall(request).enqueue(object : Callback {
                 override fun onFailure(call: Call, e: IOException) {
 //                    e.printStackTrace()
+                    properties.mutex.lock()
+                    val currentTime = now()
+                    properties.addDuration(currentTime - startTime)
+//                        logger.error("HEHE_T ${currentTime - startTime}")
+
+                    properties.decrementPendingRequestsAmount()
+
+                    properties.mutex.unlock()
                     throw e
                 }
 
