@@ -47,19 +47,18 @@ class OrderPaymentSubscriber {
 
     private val queueProcessor = Executors.newFixedThreadPool(accounts.size, NamedThreadFactory("queue-processor"))
 
-    private val mutex = ReentrantLock()
     private var stop: Boolean = false
     fun processQueue(accountInfo: AccountRequestsInfo) {
         val realPaymentExecutor = Executors.newFixedThreadPool(accountInfo.getParallelRequests(), NamedThreadFactory("real-payment-executor-${accountInfo.getExternalServiceProperties().accountName}"))
         logger.warn("START NEW QUEUE ${accountInfo.getExternalServiceProperties().accountName}")
-        val paymentService = PaymentExternalServiceImpl(accountInfo, mutex, paymentESService)
+        val paymentService = PaymentExternalServiceImpl(accountInfo, paymentESService)
         while (true) {
             logger.warn("NEW ITER ${accountInfo.getExternalServiceProperties().accountName}")
             logger.warn("[HEHE 1] PendingRequestsAmount: ${accountInfo.getPendingRequestsAmount()}, ParallelRequests: ${accountInfo.getParallelRequests()}")
             logger.warn("[HEHE 2] LastSecondRequestsAmount: ${accountInfo.getLastSecondRequestsAmount()}, RateLimitPerSec: ${accountInfo.getRateLimitPerSec()}")
             accountInfo.mutex.lock()
             if (accountInfo.getQueue().size == 0) {
-                logger.warn("QUEUE 0!!!! ${accountInfo.getExternalServiceProperties().accountName}")
+//                logger.warn("QUEUE 0!!!! ${accountInfo.getExternalServiceProperties().accountName}")
                 accountInfo.mutex.unlock()
                 Thread.sleep(170)
                 continue
@@ -69,7 +68,7 @@ class OrderPaymentSubscriber {
             val event = accountInfo.getQueue().peek()!!
 
             logger.warn("[HEHE 1] ${accountInfo.getExternalServiceProperties().accountName} NEW ACC IN QUEUE ${event.orderId} ${accountInfo.getQueue().size}")
-            logger.warn("[AVG] ${accountInfo.getExternalServiceProperties().accountName} ${accountInfo.getAverageDuration()}")
+//            logger.warn("[AVG] ${accountInfo.getExternalServiceProperties().accountName} ${accountInfo.getAverageDuration()}")
             logger.warn("[TL] ${accountInfo.getExternalServiceProperties().accountName} ${currTime + accountInfo.getAverageDuration() - event.createdAt}")
 
             if (currTime + accountInfo.getAverageDuration() - event.createdAt >= 80_000) {
@@ -86,6 +85,7 @@ class OrderPaymentSubscriber {
                 accountInfo.getQueue().remove()
                 accountInfo.mutex.unlock()
 
+                logger.warn("[${accountInfo.getExternalServiceProperties().accountName}] ${realPaymentExecutor.isShutdown} ${realPaymentExecutor.isTerminated}")
                 realPaymentExecutor.submit {
                     paymentService.submitPaymentRequest(
                         event.paymentId,
@@ -95,6 +95,7 @@ class OrderPaymentSubscriber {
                 }
 
             } else {
+                logger.warn("[${accountInfo.getExternalServiceProperties().accountName}] SKIP")
                 accountInfo.mutex.unlock()
             }
 
@@ -108,13 +109,14 @@ class OrderPaymentSubscriber {
         val currTime = System.currentTimeMillis()
 
         accountInfo.mutex.lock()
-        if (accountInfo.getPendingRequestsAmount() < accountInfo.getParallelRequests() && accountInfo.getLastSecondRequestsAmount() < accountInfo.getRateLimitPerSec() && (currTime + accountInfo.getAverageDuration() - event.createdAt) < 80_000) {
+        if (accountInfo.getPendingRequestsAmount() < accountInfo.getParallelRequests() && accountInfo.getLastSecondRequestsAmount() < accountInfo.getRateLimitPerSec()) {
             accountInfo.mutex.unlock()
-            logger.warn("${accountInfo.getExternalServiceProperties().accountName} PRIORITY ${accountInfo.getPriority()}")
+            return accountInfo.getPriority()
+        } else if ((currTime + accountInfo.getAverageDuration() * accountInfo.getQueue().size - event.createdAt) < 80_000) {
+            accountInfo.mutex.unlock()
             return accountInfo.getPriority()
         } else {
             accountInfo.mutex.unlock()
-            logger.warn("${accountInfo.getExternalServiceProperties().accountName} PRIORITY ${0}")
             return 0
         }
     }
@@ -146,14 +148,14 @@ class OrderPaymentSubscriber {
                         accounts.maxByOrNull { getPriority(it, event) }!!
 
                     if (System.currentTimeMillis() + accountInfo.getAverageDuration() * accountInfo.getQueue().size - event.createdAt >= 80_000) {
-                        logger.warn("[AHAHA] ${accountInfo.getExternalServiceProperties().accountName} UNLUCK")
+//                        logger.warn("[AHAHA] ${accountInfo.getExternalServiceProperties().accountName} UNLUCK")
 
                     } else {
 
                         logger.warn("SELECT ACC ${accountInfo.getExternalServiceProperties().accountName}")
 
                         accountInfo.mutex.lock()
-                        logger.warn("ADD EVENT TO QUEUE ${accountInfo.getExternalServiceProperties().accountName} ${event.orderId}")
+//                        logger.warn("ADD EVENT TO QUEUE ${accountInfo.getExternalServiceProperties().accountName} ${event.orderId}")
                         accountInfo.getQueue().add(event)
                         accountInfo.mutex.unlock()
 

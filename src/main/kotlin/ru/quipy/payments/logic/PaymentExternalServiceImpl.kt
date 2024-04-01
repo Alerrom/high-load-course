@@ -18,7 +18,6 @@ import java.util.concurrent.locks.ReentrantLock
 // Advice: always treat time as a Duration
 class PaymentExternalServiceImpl(
     private val properties: AccountRequestsInfo,
-    private val mutex: ReentrantLock,
     private val paymentESService: EventSourcingService<UUID, PaymentAggregate, PaymentAggregateState>,
 ) : PaymentExternalService {
 
@@ -44,16 +43,13 @@ class PaymentExternalServiceImpl(
     private val httpClientExecutor = Executors.newSingleThreadExecutor()
 
     private val client = OkHttpClient.Builder().run {
-        dispatcher(Dispatcher(httpClientExecutor).also {
-            it.maxRequestsPerHost = 100
-            it.maxRequests = 100
-        })
-        protocols(listOf(Protocol.H2_PRIOR_KNOWLEDGE))
-//        connectionPool(object : ConnectionPool {
-//            override fun connectionCount(): Int {
-//                return 0
-//            }
-//        })
+        dispatcher(Dispatcher(httpClientExecutor)
+//            .also {
+//            it.maxRequestsPerHost = 100
+//            it.maxRequests = 100
+//        }
+        )
+//        protocols(listOf(Protocol.H2_PRIOR_KNOWLEDGE))
         build()
     }
 
