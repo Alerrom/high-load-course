@@ -41,8 +41,9 @@ class OrderPaymentSubscriber {
     private val paymentExecutor = Executors.newFixedThreadPool(300, NamedThreadFactory("payment-executor"))
 
     private val accounts: List<AccountRequestsInfo> = mutableListOf(
-        AccountRequestsInfo(ExternalServicesConfig.accountProps_1),
-        AccountRequestsInfo(ExternalServicesConfig.accountProps_2)
+        AccountRequestsInfo(ExternalServicesConfig.accountProps_2),
+        AccountRequestsInfo(ExternalServicesConfig.accountProps_3),
+        AccountRequestsInfo(ExternalServicesConfig.accountProps_4)
     )
 
     private val queueProcessor = Executors.newFixedThreadPool(accounts.size, NamedThreadFactory("queue-processor"))
@@ -68,7 +69,7 @@ class OrderPaymentSubscriber {
             val event = accountInfo.getQueue().peek()!!
 
             logger.warn("[HEHE 1] ${accountInfo.getExternalServiceProperties().accountName} NEW ACC IN QUEUE ${event.orderId} ${accountInfo.getQueue().size}")
-//            logger.warn("[AVG] ${accountInfo.getExternalServiceProperties().accountName} ${accountInfo.getAverageDuration()}")
+            logger.warn("[AVG] ${accountInfo.getExternalServiceProperties().accountName} ${accountInfo.getAverageDuration()}")
             logger.warn("[TL] ${accountInfo.getExternalServiceProperties().accountName} ${currTime + accountInfo.getAverageDuration() - event.createdAt}")
 
             if (currTime + accountInfo.getAverageDuration() - event.createdAt >= 80_000) {
@@ -86,6 +87,7 @@ class OrderPaymentSubscriber {
                 accountInfo.mutex.unlock()
 
                 logger.warn("[${accountInfo.getExternalServiceProperties().accountName}] ${realPaymentExecutor.isShutdown} ${realPaymentExecutor.isTerminated}")
+
                 realPaymentExecutor.submit {
                     paymentService.submitPaymentRequest(
                         event.paymentId,
@@ -124,7 +126,13 @@ class OrderPaymentSubscriber {
     @PostConstruct
     fun init() {
         for (acc in accounts) {
-            queueProcessor.submit { processQueue(acc) }
+            queueProcessor.submit {
+                try {
+                    processQueue(acc)
+                } catch (_: Exception) {
+
+                }
+            }
         }
 
         subscriptionsManager.createSubscriber(

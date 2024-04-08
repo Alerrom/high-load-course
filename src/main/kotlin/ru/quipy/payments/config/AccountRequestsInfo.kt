@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory
 import ru.quipy.orders.api.OrderPaymentStartedEvent
 import ru.quipy.payments.logic.ExternalServiceProperties
 import java.util.*
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.locks.ReentrantLock
 
@@ -19,7 +20,7 @@ class AccountRequestsInfo(
     private var timestamps: MutableList<Long> = arrayListOf()
     private var durations: MutableList<Long> = arrayListOf()
 
-    private var queue: Queue<OrderPaymentStartedEvent> = LinkedList()
+    private var queue: Queue<OrderPaymentStartedEvent> = LinkedBlockingQueue(2000)
 
     private var indexOfLastRequest = 0
     private var pendingRequestsAmount = AtomicLong(0)

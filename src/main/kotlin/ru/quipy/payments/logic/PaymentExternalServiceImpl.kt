@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import okhttp3.*
 import org.slf4j.LoggerFactory
+import org.springframework.data.mongodb.core.aggregation.DateOperators.Millisecond
 import ru.quipy.core.EventSourcingService
 import ru.quipy.payments.api.PaymentAggregate
 import ru.quipy.payments.config.AccountRequestsInfo
@@ -13,6 +14,7 @@ import java.time.Duration
 import java.util.*
 import java.util.concurrent.Executors
 import java.util.concurrent.locks.ReentrantLock
+import kotlin.time.DurationUnit
 
 
 // Advice: always treat time as a Duration
@@ -40,16 +42,17 @@ class PaymentExternalServiceImpl(
 //    @Autowired
 //    private lateinit var paymentESService: EventSourcingService<UUID, PaymentAggregate, PaymentAggregateState>
 
-    private val httpClientExecutor = Executors.newSingleThreadExecutor()
+    private val httpClientExecutor = Executors.newFixedThreadPool(1000);
 
-    private val client = OkHttpClient.Builder().run {
+    private val client = OkHttpClient
+        .Builder().run {
         dispatcher(Dispatcher(httpClientExecutor)
-//            .also {
-//            it.maxRequestsPerHost = 100
-//            it.maxRequests = 100
-//        }
+            .also {
+            it.maxRequestsPerHost = 1000000
+            it.maxRequests = 1000000
+        }
         )
-//        protocols(listOf(Protocol.H2_PRIOR_KNOWLEDGE))
+        protocols(Collections.singletonList(Protocol.H2_PRIOR_KNOWLEDGE))
         build()
     }
 
@@ -94,17 +97,18 @@ class PaymentExternalServiceImpl(
                 override fun onResponse(call: Call, response: Response) {
                     response.use { resp ->
                         val respBody = resp.body?.string()
-                        logger.warn("[HEHE 2_1] ResponseBody: ${respBody}")
+                        logger.warn("[HEHE 2_1] ResponseBody: ${respBody} ${accountName}")
 
                         properties.mutex.lock()
                         val currentTime = now()
                         properties.addDuration(currentTime - startTime)
-//                        logger.error("HEHE_T ${currentTime - startTime}")
+                        logger.error("HEHE_T ${currentTime - startTime} ${accountName}")
 
                         properties.decrementPendingRequestsAmount()
 
                         properties.mutex.unlock()
-                        logger.warn("[HEHE 2_1] ResponseBody: ${respBody}")
+                        logger.warn("[HEHE 2_1] ResponseBody: ${respBody} ${accountName}")
+                        logger.warn("[HEHE 2_1] ResponseBody: $startTime ${accountName}")
 
                         val body = try {
                             mapper.readValue(respBody, ExternalSysResponse::class.java)
